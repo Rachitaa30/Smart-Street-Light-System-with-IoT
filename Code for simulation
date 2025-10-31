@@ -1,0 +1,174 @@
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+// I2C LCD - Use correct address (0x27 or 0x3F)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+// Pin definitions
+const int LDR_PIN = A0;
+const int PIR_PIN = 2;
+const int LED_PIN = 9;
+// Variables
+int ldrValue = 0;
+bool motionDetected = false;
+unsigned long lastMotionTime = 0;
+const unsigned long motionTimeout = 30000; // 30 seconds
+// OPTIMIZED LDR THRESHOLDS - Works in most environments
+const int BRIGHT_DAY_THRESHOLD = 600; // Bright light > 600
+const int CLOUDY_DAY_THRESHOLD = 350; // Cloudy/Rainy 350-600
+const int NIGHT_THRESHOLD = 200; // Night < 200
+void setup() {
+ // Initialize pins
+ pinMode(PIR_PIN, INPUT);
+ pinMode(LED_PIN, OUTPUT);
+
+ // Initialize serial for debugging
+ Serial.begin(9600);
+
+ // Initialize LCD
+ lcd.init();
+ lcd.backlight();
+ lcd.clear();
+
+ // Welcome message
+35
+ lcd.setCursor(0, 0);
+ lcd.print(" SMART STREET ");
+ lcd.setCursor(0, 1);
+ lcd.print(" LIGHT SYSTEM");
+ delay(3000);
+
+ lcd.clear();
+ lcd.setCursor(0, 0);
+ lcd.print("System Ready");
+ lcd.setCursor(0, 1);
+ lcd.print("LDR Calibrated");
+ delay(2000);
+ lcd.clear();
+
+ Serial.println("Smart Street Light - CALIBRATED MODE");
+ Serial.println("LDR Thresholds: Bright>600, Cloudy>350, Night<200");
+}
+void loop() {
+ // Read sensor values
+ ldrValue = analogRead(LDR_PIN);
+ motionDetected = digitalRead(PIR_PIN);
+
+ // Debug to Serial Monitor
+ Serial.print("LDR: ");
+ Serial.print(ldrValue);
+ Serial.print(" | Motion: ");
+ Serial.println(motionDetected ? "DETECTED" : "NONE");
+
+ // Update motion timer
+ if (motionDetected) {
+ lastMotionTime = millis();
+ Serial.println(">>> VEHICLE DETECTED - FULL BRIGHTNESS");
+ }
+
+ // Check if motion is still valid (within 30 second timeout)
+ bool validMotion = (millis() - lastMotionTime) < motionTimeout;
+ unsigned long secondsLeft = (motionTimeout - (millis() - lastMotionTime)) / 1000;
+
+36
+ // MAIN LIGHTING LOGIC WITH OPTIMIZED THRESHOLDS
+ if (ldrValue > BRIGHT_DAY_THRESHOLD) {
+ // Condition 1: BRIGHT DAY - Lights OFF
+ handleBrightDay();
+ }
+ else if (ldrValue > CLOUDY_DAY_THRESHOLD) {
+ // Condition 2: CLOUDY/RAINY DAY
+ handleRainyDay(validMotion, secondsLeft);
+ }
+ else if (ldrValue > NIGHT_THRESHOLD) {
+ // Condition 3: DARK CLOUDY/EVENING
+ handleEvening(validMotion, secondsLeft);
+ }
+ else {
+ // Condition 4: FULL NIGHT
+ handleFullNight(validMotion, secondsLeft);
+ }
+
+ delay(500); // Update twice per second
+}
+void handleBrightDay() {
+ // Bright day - light completely OFF
+ analogWrite(LED_PIN, 0);
+ lcd.setCursor(0, 0);
+ lcd.print("BRIGHT DAY ");
+ lcd.setCursor(0, 1);
+ lcd.print("LIGHTS: OFF ");
+}
+void handleRainyDay(bool validMotion, unsigned long secondsLeft) {
+ if (validMotion) {
+ // Vehicle detected - FULL brightness
+ analogWrite(LED_PIN, 255);
+ lcd.setCursor(0, 0);
+ lcd.print("RAINY: VEHICLE!");
+ lcd.setCursor(0, 1);
+ if (secondsLeft > 0) {
+ lcd.print("ON: ");
+37
+ if (secondsLeft < 10) lcd.print("0");
+ lcd.print(secondsLeft);
+ lcd.print("s ");
+ } else {
+ lcd.print("FULL BRIGHT ");
+ }
+ } else {
+ // No vehicle - MEDIUM dim light
+ analogWrite(LED_PIN, 150);
+ lcd.setCursor(0, 0);
+ lcd.print("CLOUDY/RAINY ");
+ lcd.setCursor(0, 1);
+ lcd.print("MEDIUM LIGHT ");
+ }
+}
+void handleEvening(bool validMotion, unsigned long secondsLeft) {
+ if (validMotion) {
+ // Vehicle detected - FULL brightness
+ analogWrite(LED_PIN, 255);
+ lcd.setCursor(0, 0);
+ lcd.print("EVENING: VEH! ");
+ lcd.setCursor(0, 1);
+ if (secondsLeft > 0) {
+ lcd.print("ON: ");
+ if (secondsLeft < 10) lcd.print("0");
+ lcd.print(secondsLeft);
+ lcd.print("s ");
+ } else {
+ lcd.print("FULL BRIGHT ");
+ }
+ } else {
+ // No vehicle - DIM light
+ analogWrite(LED_PIN, 100);
+ lcd.setCursor(0, 0);
+ lcd.print("DARK EVENING ");
+ lcd.setCursor(0, 1);
+ lcd.print("DIM LIGHT ON ");
+ }
+38
+}
+void handleFullNight(bool validMotion, unsigned long secondsLeft) {
+ if (validMotion) {
+ // Vehicle detected - FULL brightness for 30 seconds
+ analogWrite(LED_PIN, 255);
+ lcd.setCursor(0, 0);
+ lcd.print("NIGHT: VEHICLE!");
+ lcd.setCursor(0, 1);
+ if (secondsLeft > 0) {
+ lcd.print("ON: ");
+ if (secondsLeft < 10) lcd.print("0");
+ lcd.print(secondsLeft);
+ lcd.print("s ");
+ } else {
+ lcd.print("FULL BRIGHT ");
+ }
+ } else {
+ // No vehicle - LOW dim light for energy saving
+ analogWrite(LED_PIN, 80);
+ lcd.setCursor(0, 0);
+ lcd.print("NIGHT: NO VEH ");
+ lcd.setCursor(0, 1);
+ lcd.print("LOW DIM MODE ");
+ }
+}
